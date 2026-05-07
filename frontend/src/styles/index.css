@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  min-height: max(884px, 100dvh);
+}
+
+.ios-blur {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.bmi-gauge {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #60A5FA 0%, #34D399 25%, #FBBF24 50%, #EF4444 100%);
+}
+
+.bmi-indicator {
+  transition: left 0.5s ease-in-out;
+}

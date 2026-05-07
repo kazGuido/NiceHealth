@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mesures de santé</title>
+    <script src="https://unpkg.com/alpinejs" defer></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="/ui/static/css/styles.css" rel="stylesheet">
+</head>
+<body class="bg-black text-white">
+
+<div class="p-4 pb-20" 
+     x-data="{
+         measurements: [],
+         searchQuery: '',
+         selectedMeasurement: null,
+         isPanelOpen: false,
+         init() {
+             fetch('/health-data/api/measurements')
+                 .then(response => response.json())
+                 .then(data => {
+                    // Appwrite returns documents, and 'datas' is a JSON string.
+                    // We need to parse it to maintain compatibility with the old display logic.
+                    this.measurements = data.map(m => {
+                        if (typeof m.datas === 'string') {
+                            try {
+                                m.datas = JSON.parse(m.datas);
+                            } catch (e) {
+                                m.datas = { 'error': 'Impossible d\'analyser les données' };
+                            }
+                        }
+                        return m;
+                    });
+                 });
+         },
+         filteredMeasurements() {
+             if (!this.searchQuery) return this.measurements;
+             return this.measurements.filter(m => 
+                 m.action.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                 m.deviceID.toLowerCase().includes(this.searchQuery.toLowerCase())
+             );
+         },
+         selectMeasurement(measurement) {
+            this.selectedMeasurement = measurement;
+            this.isPanelOpen = true;
+         },
+         closePanel() {
+            this.isPanelOpen = false;
+         }
+     }">
+    
+    <!-- Header -->
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-white mb-4">Mesures de santé</h1>
+        
+        <!-- Search Bar -->
+        <div class="relative">
+            <input type="text" 
+                   x-model="searchQuery"
+                   placeholder="Rechercher par action ou identifiant d'appareil..." 
+                   class="w-full p-3 rounded-lg bg-gray-900 border border-gray-800 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 absolute right-3 top-3 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h3 class="text-gray-400 text-sm font-medium">Nombre total d'enregistrements</h3>
+            <p class="text-2xl font-bold text-white" x-text="measurements.length"></p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h3 class="text-gray-400 text-sm font-medium">Appareils uniques</h3>
+            <p class="text-2xl font-bold text-white" x-text="[...new Set(measurements.map(m => m.deviceID))].length"></p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h3 class="text-gray-400 text-sm font-medium">Actions</h3>
+            <p class="text-2xl font-bold text-white" x-text="[...new Set(measurements.map(m => m.action))].length"></p>
+        </div>
+        <div class="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <h3 class="text-gray-400 text-sm font-medium">Dernier</h3>
+            <p class="text-sm font-medium text-gray-300" x-text="measurements.length > 0 ? new Date(measurements[measurements.length-1].timestamp).toLocaleDateString() : 'Aucune donnée'"></p>
+        </div>
+    </div>
+
+    <!-- Measurements Table -->
+    <div class="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+        <div class="p-4 border-b border-gray-800">
+            <h2 class="text-lg font-semibold text-white">Enregistrements de mesures</h2>
+        </div>
+        
+        <div class="overflow-auto max-h-96">
+            <table class="w-full text-sm text-left text-gray-300">
+                <thead class="bg-gray-800 text-gray-400 sticky top-0">
+                    <tr>
+                        <th class="px-4 py-3 font-medium">ID</th>
+                        <th class="px-4 py-3 font-medium">Action</th>
+                        <th class="px-4 py-3 font-medium">ID Appareil</th>
+                        <th class="px-4 py-3 font-medium">Horodatage</th>
+                        <th class="px-4 py-3 font-medium">Données</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="measurement in filteredMeasurements()" :key="measurement.id">
+                        <tr class="border-b border-gray-800 hover:bg-gray-800/50 transition-colors cursor-pointer"
+                            @click="selectMeasurement(measurement)">
+                            <td class="px-4 py-3 text-yellow-400 font-medium" x-text="measurement.id"></td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 text-xs font-medium bg-blue-600/20 text-blue-400 rounded-full" 
+                                      x-text="measurement.action"></span>
+                            </td>
+                            <td class="px-4 py-3 text-gray-300" x-text="measurement.deviceID"></td>
+                            <td class="px-4 py-3 text-gray-400" x-text="new Date(measurement.timestamp).toLocaleString()"></td>
+                            <td class="px-4 py-3">
+                                <div class="max-w-xs truncate">
+                                    <span class="text-gray-300 text-xs font-mono bg-gray-800 px-2 py-1 rounded" 
+                                          x-text="JSON.stringify(measurement.datas)"
+                                          :title="JSON.stringify(measurement.datas, null, 2)"></span>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+            
+            <!-- Empty State -->
+            <div x-show="filteredMeasurements().length === 0" class="p-8 text-center">
+                <div class="text-gray-500 mb-2">
+                    <svg class="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <h3 class="text-gray-400 font-medium">Aucune mesure trouvée</h3>
+                <p class="text-gray-500 text-sm mt-1">
+                    <span x-show="searchQuery">Essayez d'ajuster vos critères de recherche</span>
+                    <span x-show="!searchQuery">Aucune donnée de mesure disponible pour le moment</span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Refresh Button -->
+    <div class="mt-6 text-center">
+        <button @click="window.location.reload()" 
+                class="bg-yellow-500 hover:bg-yellow-600 text-black font-medium py-2 px-4 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-400">
+            <svg class="inline h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Rafraîchir les données
+        </button>
+    </div>
+
+    <!-- Raw Data Viewer -->
+    <div class="mt-8" x-data="{ showRawData: false }">
+        <div class="text-center">
+            <button @click="showRawData = !showRawData"
+                    class="text-gray-500 hover:text-gray-300 text-sm font-medium focus:outline-none mb-2">
+                <span x-show="!showRawData">Afficher les données brutes pour le débogage</span>
+                <span x-show="showRawData">Masquer les données brutes</span>
+            </button>
+        </div>
+        <div x-show="showRawData" x-transition>
+            <textarea readonly
+                      class="w-full h-64 bg-black border border-gray-700 text-gray-300 text-xs font-mono p-3 rounded-lg focus:outline-none"
+                      x-text="JSON.stringify(measurements, null, 2)"></textarea>
+        </div>
+    </div>
+
+    <!-- Sliding Panel -->
+    <div x-show="isPanelOpen"
+        style="display: none;"
+        @keydown.escape.window="closePanel"
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-black/60 z-40"
+        aria-labelledby="slide-over-title"
+        role="dialog"
+        aria-modal="true">
+
+        <div @click="closePanel" class="absolute inset-0"></div>
+
+        <div @click.stop
+            x-show="isPanelOpen"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="transform translate-x-full"
+            x-transition:enter-end="transform translate-x-0"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="transform translate-x-0"
+            x-transition:leave-end="transform translate-x-full"
+            class="fixed top-0 right-0 h-full w-full max-w-lg bg-gray-900 shadow-2xl z-50 overflow-y-auto text-white">
+
+            <template x-if="selectedMeasurement">
+                <div class="p-6 h-full flex flex-col">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 id="slide-over-title" class="text-2xl font-bold text-yellow-400">Profil de santé</h2>
+                        <button @click="closePanel()" class="text-gray-500 hover:text-white transition-colors p-1 rounded-full">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        </button>
+                    </div>
+
+                    <div class="flex-grow space-y-6 overflow-y-auto pr-2 -mr-2" x-data="{ profile: selectedMeasurement.datas[0] }">
+                        <!-- General Info -->
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-3 border-b border-gray-700 pb-2">Informations générales</h3>
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                <span class="text-gray-400">ID Appareil</span>
+                                <span class="font-medium text-right truncate" x-text="selectedMeasurement.deviceID"></span>
+
+                                <span class="text-gray-400">Action</span>
+                                <span class="font-medium text-right" x-text="selectedMeasurement.action"></span>
+
+                                <span class="text-gray-400">Horodatage de l'enregistrement</span>
+                                <span class="font-medium text-right" x-text="new Date(selectedMeasurement.timestamp).toLocaleString()"></span>
+
+                                <template x-if="profile.timestamp">
+                                <span class="text-gray-400">Heure de la mesure</span>
+                                <span class="font-medium text-right" x-text="new Date(parseInt(profile.timestamp)).toLocaleString()"></span>
+                                </template>
+                            </div>
+                        </div>
+                        
+                        <!-- User Info -->
+                        <div>
+                            <h3 class="text-lg font-semibold text-white mb-3 border-b border-gray-700 pb-2">Profil utilisateur</h3>
+                            <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                <span class="text-gray-400">Nom</span>
+                                <span class="font-medium text-right" x-text="profile.name || 'N/A'"></span>
+                                
+                                <span class="text-gray-400">Âge</span>
+                                <span class="font-medium text-right" x-text="profile.age > 0 ? profile.age : 'N/A'"></span>
+                                
+                                <span class="text-gray-400">Sexe</span>
+                                <span class="font-medium text-right" x-text="profile.sex === '0' ? 'Femme' : (profile.sex === '1' ? 'Homme' : 'N/A')"></span>
+
+                                <span class="text-gray-400">Date de naissance</span>
+                                <span class="font-medium text-right" x-text="profile.birthday || 'N/A'"></span>
+                            </div>
+                        </div>
+
+                        <!-- BMI Details -->
+                        <template x-if="profile.BMI">
+                            <div>
+                                <h3 class="text-lg font-semibold text-white mb-3 border-b border-gray-700 pb-2">Indice de masse corporelle (IMC)</h3>
+                                <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                    <span class="text-gray-400">Taille</span>
+                                    <span class="font-medium text-right" x-text="profile.BMI.height + ' cm'"></span>
+
+                                    <span class="text-gray-400">Poids</span>
+                                     <span class="font-medium text-right" x-text="profile.BMI.weight + ' kg'"></span>
+
+                                    <span class="text-gray-400">Valeur IMC</span>
+                                    <span class="font-medium text-right" x-text="profile.BMI.bmi"></span>
+
+                                    <span class="text-gray-400">Plage normale</span>
+                                    <span class="font-medium text-right" x-text="profile.BMI.bmi_normal"></span>
+                                </div>
+
+                                <div class="mt-4">
+                                    <p class="text-xs text-gray-500 text-center">L'IMC est une mesure de la masse grasse basée sur la taille et le poids.</p>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Raw Data for this Record -->
+                        <div class="pt-4">
+                             <h3 class="text-lg font-semibold text-white mb-3 border-b border-gray-700 pb-2">Données brutes de l'enregistrement</h3>
+                             <textarea readonly class="w-full h-48 bg-black border border-gray-700 text-gray-300 text-xs font-mono p-2 rounded-lg focus:outline-none" x-text="JSON.stringify(selectedMeasurement, null, 2)"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+</body>
+</html> 

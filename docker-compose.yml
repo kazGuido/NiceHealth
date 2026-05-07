@@ -1,0 +1,145 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: health_data_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: health_data
+      POSTGRES_USER: health_user
+      POSTGRES_PASSWORD: health_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U health_user -d health_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - health_network
+
+  backend:
+    build: ./backend
+    container_name: health_data_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://health_user:health_pass@postgres:5432/health_data
+      CORS_ORIGINS: http://localhost:5173,http://frontend:5173,https://niceq-app.nicedaytech.com,capacitor://localhost,http://localhost
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      SMTP_HOST: ${SMTP_HOST:-smtp.purelymail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-noreply@nicedaytech.com}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@nicedaytech.com}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-NiceDay Technologies}
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minio_admin
+      MINIO_SECRET_KEY: minio_password
+      MINIO_BUCKET: health-data
+      MINIO_PUBLIC_URL: http://localhost:9001/health-data
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-nvidia/nemotron-3-super-120b-a12b:free}
+      FRONTEND_URL: ${FRONTEND_URL:-https://niceq-app.nicedaytech.com}
+      WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}
+      WHATSAPP_BRIDGE_URL: ${WHATSAPP_BRIDGE_URL:-http://whatsapp-bridge:8765}
+      DAILY_SUMMARY_HOUR: ${DAILY_SUMMARY_HOUR:-14}
+      DAILY_SUMMARY_MINUTE: ${DAILY_SUMMARY_MINUTE:-0}
+      DAILY_SUMMARY_TZ: ${DAILY_SUMMARY_TZ:-UTC}
+      WHATSAPP_BRIDGE_WEBHOOK_SECRET: ${WHATSAPP_BRIDGE_WEBHOOK_SECRET:-}
+      WHATSAPP_MONITOR_EMAILS: ${WHATSAPP_MONITOR_EMAILS:-}
+      WHATSAPP_MONITOR_NOTIFY_ADMINS: ${WHATSAPP_MONITOR_NOTIFY_ADMINS:-true}
+    ports:
+      - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - ./backend/logs:/app/logs
+    networks:
+      - health_network
+      - npm_network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  whatsapp-bridge:
+    build: ./whatsapp-bridge
+    container_name: health_whatsapp_bridge
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8765:8765"
+    volumes:
+      - whatsapp_bridge_auth:/app/auth_info
+    environment:
+      PORT: "8765"
+      AUTH_DIR: /app/auth_info
+      LOG_LEVEL: info
+      WEBHOOK_URL: ${WHATSAPP_WEBHOOK_URL:-http://backend:8000/webhooks/whatsapp-bridge}
+      WEBHOOK_SECRET: ${WHATSAPP_BRIDGE_WEBHOOK_SECRET:-}
+    networks:
+      - health_network
+
+  minio:
+    image: minio/minio
+    container_name: health_data_minio
+    restart: unless-stopped
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    environment:
+      MINIO_ROOT_USER: minio_admin
+      MINIO_ROOT_PASSWORD: minio_password
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - health_network
+      - npm_network
+
+  frontend:
+    build: ./frontend
+    container_name: health_data_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - health_network
+      - npm_network
+    environment:
+      - VITE_API_URL=https://niceq.nicedaytech.com
+    command: sh -c "npm run build && npm run preview -- --host 0.0.0.0 --port 5173"
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: health_data_uptime_kuma
+    ports:
+      - "3004:3001"
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - health_network
+    restart: unless-stopped
+    environment:
+      - UPTIME_KUMA_PORT=3001
+
+networks:
+  health_network:
+    driver: bridge
+  npm_network:
+    external: true
+    name: nginx-proxy-manager_npm-network
+
+volumes:
+  postgres_data:
+  minio_data:
+  uptime_kuma_data:
+  whatsapp_bridge_auth:
